@@ -1,24 +1,66 @@
 // src/pages/AuthCallback.tsx
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
 
 export default function AuthCallback() {
   const navigate = useNavigate();
-  const { role } = useAuth();
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      const destination = role === "admin" ? "/admin/jobs" : "/jobs";
-      navigate(destination);
-    }, 1000);
+    const handleCallback = async () => {
+      const hash = window.location.hash;
+      if (!hash) {
+        console.error("No hash found in URL");
+        navigate("/auth");
+        setLoading(false);
+        return;
+      }
 
-    return () => clearTimeout(timer);
-  }, [navigate, role]);
+      const params = new URLSearchParams(hash.substring(1));
+      const accessToken = params.get("access_token");
 
-  return (
-    <div className="flex items-center justify-center min-h-screen">
-      <p>Mengalihkan...</p>
-    </div>
-  );
+      if (!accessToken) {
+        console.error("Access token not found in hash");
+        navigate("/auth");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+
+        if (!data.session) {
+          const { data: sessionData, error: sessionError } =
+            await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: params.get("refresh_token") || "",
+            });
+
+          if (sessionError) throw sessionError;
+        }
+
+        const destination = "/jobs";
+        navigate(destination);
+      } catch (err) {
+        console.error("Auth callback error:", err);
+        navigate("/auth");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    handleCallback();
+  }, [navigate]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p>Mengalihkan...</p>
+      </div>
+    );
+  }
+
+  return null;
 }
